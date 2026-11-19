@@ -70,8 +70,42 @@ classForm.addEventListener("submit",async e=>{
  if(error){toast("Erreur : "+error.message);return}
  classModal.hidden=true;classForm.reset();toast("Classe créée avec succès ! Tu es administrateur.");await refreshClasses();
 });
-document.querySelectorAll("[data-view]").forEach(btn=>btn.addEventListener("click",()=>{const view=btn.dataset.view;const names={overview:"Vue d'ensemble",classes:"Mes classes",discover:"Découvrir",library:"Bibliothèque",assignments:"Devoirs",calendar:"Calendrier",coach:"AI Study Coach",rooms:"Study Rooms",flashcards:"Flashcards",settings:"Paramètres"};$("#crumbCurrent").textContent=names[view]||view;document.querySelectorAll(".nav-item").forEach(n=>n.classList.toggle("active",n.dataset.view===view));if(view!=="overview")toast(names[view]+" : ce module sera activé dans la prochaine version.");$("#sidebar").classList.remove("open")}));
+document.querySelectorAll("[data-view]").forEach(btn=>btn.addEventListener("click",()=>{const view=btn.dataset.view;const names={overview:"Vue d'ensemble",classes:"Mes classes",discover:"Découvrir",library:"Bibliothèque",assignments:"Devoirs",calendar:"Calendrier",coach:"AI Study Coach",rooms:"Study Rooms",flashcards:"Flashcards",settings:"Paramètres"};$("#crumbCurrent").textContent=names[view]||view;document.querySelectorAll(".nav-item").forEach(n=>n.classList.toggle("active",n.dataset.view===view));if(view==="coach"){if(!currentUser){openAuth();toast("Connecte-toi pour utiliser LEARNOVA AI.");}else openCoach();}else if(view!=="overview")toast(names[view]+" : ce module sera activé dans la prochaine version.");$("#sidebar").classList.remove("open")}));
 $("#menuBtn").addEventListener("click",()=>$("#sidebar").classList.toggle("open"));
 sb.auth.onAuthStateChange((_event,session)=>{applySession(session)});
 sb.auth.getSession().then(({data})=>applySession(data.session));
+
+let coachMode="coach";
+function openCoach(){ $("coachBackdrop").hidden=false; $("coachInput").focus(); }
+function addCoachMessage(text,role){
+ const item=document.createElement("div");item.className="coach-message "+role;item.textContent=text;$("coachMessages").append(item);$("coachMessages").scrollTop=$("coachMessages").scrollHeight;
+}
+$("coachClose").addEventListener("click",()=>{$("coachBackdrop").hidden=true});
+$("coachBackdrop").addEventListener("click",e=>{if(e.target===$("coachBackdrop"))$("coachBackdrop").hidden=true});
+$("coachModeBtn").addEventListener("click",()=>{
+ coachMode=coachMode==="coach"?"qcm":"coach";
+ $("coachModeBtn").textContent=coachMode==="coach"?"Mode : Coach IA":"Mode : Générer un QCM";
+ $("coachInputLabel").firstChild.textContent=coachMode==="coach"?"Ta question":"Colle le texte de ton cours";
+ $("coachInput").placeholder=coachMode==="coach"?"Écris ta question ici…":"Colle ici le texte de ton cours pour générer 10 questions QCM…";
+ $("coachHint").textContent=coachMode==="coach"?"Pose une question et demande une explication étape par étape.":"Colle le texte du cours. LEARNOVA AI créera 10 QCM avec corrigé. Import PDF à venir.";
+ $("coachMessages").innerHTML="";
+ addCoachMessage(coachMode==="coach"?"Pose-moi une question sur ton cours.":"Colle ton cours dans la zone ci-dessous pour créer un QCM.","assistant");
+});
+$("coachForm").addEventListener("submit",async e=>{
+ e.preventDefault();
+ const prompt=$("coachInput").value.trim();if(!prompt)return;
+ if(!currentUser){openAuth();toast("Connecte-toi pour continuer.");return}
+ const {data:{session}}=await sb.auth.getSession();
+ if(!session?.access_token){openAuth();toast("Ta session a expiré. Reconnecte-toi.");return}
+ addCoachMessage(prompt,"user");$("coachInput").value="";
+ const send=$("coachSend");send.disabled=true;send.textContent="LEARNOVA réfléchit…";
+ try{
+  const response=await fetch("/api/ai",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+session.access_token},body:JSON.stringify({mode:coachMode,prompt})});
+  const payload=await response.json();
+  if(!response.ok)throw new Error(payload.error||"Une erreur est survenue.");
+  addCoachMessage(payload.answer,"assistant");
+ }catch(err){addCoachMessage("Erreur : "+(err.message||"Impossible de contacter l'IA. Réessaie."),"assistant");}
+ finally{send.disabled=false;send.textContent=coachMode==="coach"?"Envoyer à LEARNOVA AI →":"Générer mon QCM →";}
+});
+
 authMode(false);
