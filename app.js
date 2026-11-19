@@ -18,8 +18,8 @@ async function refreshClasses(){
 async function applySession(session){
  currentUser=session?.user||null;
  const authBtn=$("#authBtn");
- if(currentUser){authBtn.textContent="Se déconnecter";authBtn.onclick=async()=>{await sb.auth.signOut();toast("Déconnexion réussie.");};const name=currentUser.user_metadata?.display_name||currentUser.email?.split("@")[0]||"Étudiant";document.querySelectorAll(".profile-mini b").forEach(x=>x.textContent=name);document.querySelectorAll(".avatar-me").forEach(x=>x.textContent=name.slice(0,2).toUpperCase());await refreshClasses()}
- else{authBtn.textContent="Se connecter";authBtn.onclick=openAuth}
+ if(currentUser){authBtn.textContent="Se déconnecter";const name=currentUser.user_metadata?.display_name||currentUser.email?.split("@")[0]||"Étudiant";document.querySelectorAll(".profile-mini b").forEach(x=>x.textContent=name);document.querySelectorAll(".avatar-me").forEach(x=>x.textContent=name.slice(0,2).toUpperCase());await refreshClasses()}
+ else{authBtn.textContent="Se connecter"}
 }
 $("#authBtn").addEventListener("click",()=>currentUser?sb.auth.signOut():openAuth());
 $("#authClose").addEventListener("click",closeAuth);
