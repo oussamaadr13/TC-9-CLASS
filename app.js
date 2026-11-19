@@ -8,17 +8,43 @@ function closeAuth(){authBackdrop.hidden=true}
 function authMode(signup){signupMode=signup;$("#authTitle").textContent=signup?"Créer ton compte LEARNOVA":"Bienvenue sur LEARNOVA";$("#authDescription").textContent=signup?"Rejoins ton espace d'apprentissage.":"Connecte-toi pour retrouver tes classes et tes révisions.";$("#displayNameWrap").hidden=!signup;$("#authSubmit").textContent=signup?"Créer mon compte →":"Se connecter →";$("#authToggle").textContent=signup?"J'ai déjà un compte":"Créer un compte"}
 async function refreshClasses(){
  const grid=$("#classGrid"); if(!grid)return;
- const {data,error}=await sb.from("classes").select("id,name,description,subject,created_at").order("created_at",{ascending:false});
+ const {data,error}=await sb.from("classes").select("id,name,description,subject,created_at,admin_id").order("created_at",{ascending:false});
  if(error){toast("Impossible de charger les classes : "+error.message);return}
  grid.innerHTML="";
  if(!data.length){grid.innerHTML='<div class="empty-classes">Pas encore de classe. Crée la première pour commencer !</div>';return}
  const palette=["class-purple","class-green","class-orange"],letters=["M","S","L","✦"];
- data.forEach((c,i)=>{const el=document.createElement("article");el.className="class-card "+palette[i%3];const top=document.createElement("div");top.className="class-card-top";const symbol=document.createElement("span");symbol.className="class-symbol";symbol.textContent=letters[i%4];const menu=document.createElement("span");menu.className="class-menu";menu.textContent="LEARNOVA";top.append(symbol,menu);const meta=document.createElement("div");meta.className="class-meta";meta.textContent=c.subject||"CLASSE";const h=document.createElement("h3");h.textContent=c.name;const p=document.createElement("p");p.textContent=c.description||"Espace de travail et de révision.";const foot=document.createElement("div");foot.className="class-footer";const note=document.createElement("span");note.textContent="Classe privée";foot.append(note);el.append(top,meta,h,p,foot);grid.append(el)});
+ data.forEach((c,i)=>{const el=document.createElement("article");el.className="class-card "+palette[i%3];const top=document.createElement("div");top.className="class-card-top";const symbol=document.createElement("span");symbol.className="class-symbol";symbol.textContent=letters[i%4];const menu=document.createElement("span");menu.className="class-menu";menu.textContent="LEARNOVA";top.append(symbol,menu);const meta=document.createElement("div");meta.className="class-meta";meta.textContent=c.subject||"CLASSE";const h=document.createElement("h3");h.textContent=c.name;const p=document.createElement("p");p.textContent=c.description||"Espace de travail et de révision.";const foot=document.createElement("div");foot.className="class-footer";const note=document.createElement("span");note.textContent="Classe privée";foot.append(note);if(c.admin_id===currentUser.id){const invite=document.createElement("button");invite.type="button";invite.textContent="Inviter";invite.addEventListener("click",()=>createInvite(c.id));foot.append(invite)}el.append(top,meta,h,p,foot);grid.append(el)});
 }
+
+async function createInvite(classId){
+ try{
+  const bytes=crypto.getRandomValues(new Uint8Array(32));
+  const token=Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join("");
+  const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(token));
+  const hash=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,"0")).join("");
+  const {error}=await sb.from("class_invites").insert({class_id:classId,created_by:currentUser.id,token_hash:hash,expires_at:new Date(Date.now()+7*86400000).toISOString(),max_uses:30});
+  if(error)throw error;
+  const link=location.origin+location.pathname+"?join="+token;
+  await navigator.clipboard.writeText(link);
+  toast("Lien d'invitation copié. Valable 7 jours (30 utilisations).");
+ }catch(err){toast("Impossible de créer le lien : "+(err.message||"erreur"))}
+}
+async function redeemInviteFromUrl(){
+ const params=new URLSearchParams(location.search),token=params.get("join");
+ if(!token)return;
+ const {data:{session}}=await sb.auth.getSession();
+ if(!session){toast("Connecte-toi ou crée un compte pour rejoindre cette classe.");openAuth();return}
+ const {data,error}=await sb.rpc("redeem_class_invite",{invite_token:token});
+ if(error){toast("Invitation refusée : "+error.message);return}
+ history.replaceState({},document.title,location.pathname);
+ toast("Tu as rejoint la classe avec succès !");
+ await refreshClasses();
+}
+
 async function applySession(session){
  currentUser=session?.user||null;
  const authBtn=$("#authBtn");
- if(currentUser){authBtn.textContent="Se déconnecter";const name=currentUser.user_metadata?.display_name||currentUser.email?.split("@")[0]||"Étudiant";document.querySelectorAll(".profile-mini b").forEach(x=>x.textContent=name);document.querySelectorAll(".avatar-me").forEach(x=>x.textContent=name.slice(0,2).toUpperCase());await refreshClasses()}
+ if(currentUser){authBtn.textContent="Se déconnecter";const name=currentUser.user_metadata?.display_name||currentUser.email?.split("@")[0]||"Étudiant";document.querySelectorAll(".profile-mini b").forEach(x=>x.textContent=name);document.querySelectorAll(".avatar-me").forEach(x=>x.textContent=name.slice(0,2).toUpperCase());await refreshClasses();await redeemInviteFromUrl()}
  else{authBtn.textContent="Se connecter"}
 }
 $("#authBtn").addEventListener("click",()=>currentUser?sb.auth.signOut():openAuth());
